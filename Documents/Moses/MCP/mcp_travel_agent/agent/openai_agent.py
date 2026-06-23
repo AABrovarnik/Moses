@@ -1,4 +1,19 @@
-"""OpenAI-агент с function calling и интеграцией MCP-клиентов.
+"""Travel-агент с function calling и интеграцией MCP-клиентов.
+
+Работает с любым OpenAI-совместимым API: OpenAI cloud, локальный Ollama,
+OpenRouter и т.п. Провайдер выбирается через `.env`:
+
+- OpenAI cloud (по умолчанию, если не задан OPENAI_BASE_URL):
+      OPENAI_API_KEY=sk-...        # реальный ключ
+      OPENAI_MODEL=gpt-4o-mini
+- Ollama (рекомендуется для РФ — нет региональных ограничений):
+      OPENAI_BASE_URL=http://127.0.0.1:11434/v1
+      OPENAI_MODEL=qwen2.5:14b
+      OPENAI_API_KEY=ollama        # заглушка, Ollama не валидирует ключ
+- OpenRouter (если хочется облачную LLM с оплатой):
+      OPENAI_BASE_URL=https://openrouter.ai/api/v1
+      OPENAI_API_KEY=sk-or-...
+      OPENAI_MODEL=qwen/qwen-2.5-72b-instruct
 
 Основной цикл:
 1. История чата + system prompt → chat.completions.create(..., tools=...).
@@ -56,13 +71,35 @@ class TravelAgent:
         openai_client: OpenAI | None = None,
     ) -> None:
         self.logs = log_queue or LogQueue()
+
+        # Провайдер LLM: OpenAI cloud, Ollama, OpenRouter — что угодно
+        # с OpenAI-совместимым /v1/chat/completions endpoint'ом.
         self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.environ.get("OPENAI_BASE_URL") or None
         api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "OPENAI_API_KEY не задан. Проверь .env в корне проекта."
-            )
-        self.client = openai_client or OpenAI(api_key=api_key)
+
+        if openai_client is None:
+            # Ollama не валидирует ключ, но openai-sdk требует непустую
+            # строку — ставим заглушку. OpenAI cloud без ключа упадёт сам
+            # на первом запросе с понятной ошибкой.
+            if not api_key:
+                if base_url:
+                    api_key = "ollama"
+                else:
+                    raise RuntimeError(
+                        "OPENAI_API_KEY не задан. Проверь .env в корне проекта."
+                    )
+            client_kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+                # Локальные модели (Ollama) на cold start могут думать
+                # 30-60 сек, генерация 14B при длинном system prompt —
+                # до 2-3 минут. openai-sdk дефолт — 600 сек, ставим явно.
+                client_kwargs["timeout"] = 600.0
+            self.client = OpenAI(**client_kwargs)
+        else:
+            self.client = openai_client
+
         self.mcp_timeout = mcp_timeout or float(os.environ.get("MCP_TIMEOUT", "30"))
 
         # Один экземпляр клиента на сессию — у Kiwi нужно сохранять
@@ -87,6 +124,11 @@ class TravelAgent:
 
         steps = 0
         max_steps = 8  # защита от зацикливания
+        # temperature=0 стабилизирует tool-calling у локальных моделей
+        # (Qwen 2.5 14B через Ollama при temp>0 в ~30% случаев после шага
+        # с role=tool отдаёт эмуляцию функции в content вместо tool_calls).
+        # Для OpenAI cloud это тоже не вредит — reasoning становится
+        # более детерминированным, что для агента-ассистента плюс.
         while steps < max_steps:
             steps += 1
             response = self.client.chat.completions.create(
@@ -94,6 +136,7 @@ class TravelAgent:
                 messages=messages,
                 tools=TOOL_SCHEMAS,
                 tool_choice="auto",
+                temperature=0,
             )
             msg = response.choices[0].message
 
@@ -124,6 +167,7 @@ class TravelAgent:
             messages=messages,
             tools=TOOL_SCHEMAS,
             tool_choice="none",
+            temperature=0,
         )
         final = tail.choices[0].message.content or ""
         return AgentRunResult(

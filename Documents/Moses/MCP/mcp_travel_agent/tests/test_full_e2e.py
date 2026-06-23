@@ -1,7 +1,7 @@
-"""End-to-end сценарий: реальный OpenAI + реальные Kiwi/Trivago MCP.
+"""End-to-end сценарий: реальный LLM (Ollama/OpenAI) + реальные Kiwi/Trivago MCP.
 
 Запускать вручную (по умолчанию skip):
-    OPENAI_E2E=1 MCP_LIVE=1 python -m pytest tests/test_full_e2e.py -v -s
+    LLM_E2E=1 MCP_LIVE=1 python -m pytest tests/test_full_e2e.py -v -s
 
 Гоняет 4 сценария из задания и пишет ответы в stdout/логи.
 """
@@ -17,8 +17,8 @@ from mcp_clients.base import LogQueue
 
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("OPENAI_E2E") != "1" or os.environ.get("MCP_LIVE") != "1",
-    reason="end-to-end требует OPENAI_E2E=1 и MCP_LIVE=1",
+    os.environ.get("LLM_E2E") != "1" or os.environ.get("MCP_LIVE") != "1",
+    reason="end-to-end требует LLM_E2E=1 и MCP_LIVE=1",
 )
 
 

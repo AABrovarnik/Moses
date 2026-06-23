@@ -43,16 +43,30 @@ def _get_agent() -> TravelAgent:
 def main() -> None:
     st.title("✈️ Туристический ассистент")
     st.caption(
-        "AI-агент на базе OpenAI. Ищет авиабилеты через Kiwi MCP "
-        "и отели через Trivago MCP. Отвечает на русском."
+        "AI-агент через OpenAI-совместимый API (по умолчанию — локальный Ollama "
+        "с Qwen 2.5 7B). Ищет авиабилеты через Kiwi MCP и отели через Trivago MCP. "
+        "Отвечает на русском."
     )
 
-    if not os.environ.get("OPENAI_API_KEY"):
+    # Достаточно наличия ЛЮБОГО из признаков: реальный ключ (OpenAI cloud)
+    # или base_url (Ollama/OpenRouter и т.п.).
+    has_llm = bool(
+        os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENAI_BASE_URL")
+    )
+    if not has_llm:
         st.error(
-            "OPENAI_API_KEY не задан. Положи его в `mcp_travel_agent/.env` "
-            "по шаблону `.env.example` и перезапусти приложение."
+            "Не настроен провайдер LLM. Скопируй `.env.example` в `.env` "
+            "и подставь OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL. "
+            "По умолчанию — локальный Ollama (см. README)."
         )
         return
+
+    # Предупреждение о холодном старте локальной модели.
+    if os.environ.get("OPENAI_BASE_URL"):
+        st.info(
+            "ℹ️ Первый запрос к локальной модели может занять 10–30 секунд "
+            "(cold start). Дальнейшие ответы — обычно 2–5 секунд."
+        )
 
     agent = _get_agent()
 
