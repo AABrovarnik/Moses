@@ -1,0 +1,15 @@
+[Unit]
+Description=Teplyy Kontur hybrid chatbot (Telegram)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/teplyy_kontur_bot
+Environment="PATH=/opt/teplyy_kontur_bot/.venv/bin"
+ExecStart=/opt/teplyy_kontur_bot/.venv/bin/python /opt/teplyy_kontur_bot/bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
